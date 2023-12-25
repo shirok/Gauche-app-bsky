@@ -1,19 +1,23 @@
 ;;;
 ;;; Bluesky API library
 ;;;
+;;;  See COPYING for the license.
+;;;
 
 ;; https://atproto.com/blog/create-post
 
 (define-module app.bsky
   (use file.util)
+  (use srfi.13)
   (use srfi.19)
   (use rfc.822)
   (use rfc.http)
   (use rfc.json)
+  (use util.match)
   (export <bsky-session> <bsky-record> <bsky-error>
           bsky-error bsky-check-status!
           make-bsky-session
-          bsky-post-text
+          bsky-post-text bsky-text-facets
           ))
 (select-module app.bsky)
 
@@ -107,15 +111,59 @@
 ;; Simple text posting
 (define (bsky-post-text bsky text :key (created-at (current-time))
                                        (langs '()))
+  (define facets (bsky-text-facets bsky text))
   (define post
-    `(("$type" . "app.bsky.feed.post")
-      ("text"  . ,text)
-      ("createdAt" . ,(fmt-time created-at))))
+    (cond-list
+     [#t @ `(("$type" . "app.bsky.feed.post")
+             ("text"  . ,text)
+             ("createdAt" . ,(fmt-time created-at)))]
+     [(pair? langs) `("langs" . ,(list->vector langs))]
+     [facets `("facets" . ,facets)]))
 
   (assume-type bsky <bsky-session>)
-
   (json->record
    (bsky-post-json bsky "/xrpc/com.atproto.repo.createRecord"
                    `(("repo" . ,(~ bsky'did))
                      ("collection" . "app.bsky.feed.post")
                      ("record" . ,post)))))
+
+;; Utility API
+(define (bsky-text-facets bsky text)
+  (let1 links (find-links text)
+    (if (pair? links)
+      (list->vector
+       (map (match-lambda
+              [(url start end)
+               `(("index" . (("byteStart" . ,start)
+                             ("byteEnd" . ,end)))
+                 ("features" . #((("$type" . "app.bsky.richtext.facet#link")
+                                  ("uri" . ,url)))))])
+            links))
+      #f)))
+
+(define rx-link
+  #/\b(https?:\/\/[^\/?#\s]+\.[[:alnum:]]{2,6}[^?#\s]*(?:\?[^#\s]*)?(?:#\S*)?)/)
+
+;; Returns ((link-text start-pos end-pos) ...)
+(define (find-links text)
+  (define (extract-link pos m)
+    (let ([start (+ pos (rxmatch-start m))]
+          [end (+ pos (rxmatch-end m))]
+          [url (m 0)])
+      (list url (charpos->bytepos text start) (charpos->bytepos text end))))
+
+  (string-build-index! text)            ;this allows fast charpos->bytepos
+  (let loop ([text text]
+             [pos 0]
+             [xs '()])
+    (cond
+     [(string-null? text) (reverse xs)]
+     [(rx-link text) => (^m (loop (m 'after)
+                                  (+ pos (rxmatch-end m))
+                                  (cons (extract-link pos m) xs)))]
+     [else (reverse xs)])))
+
+(define (charpos->bytepos text charpos)
+  ;; looks awful, but we don't actually copy the string content so it's
+  ;; not so bad.
+  (string-size (substring text 0 charpos)))
