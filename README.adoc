@@ -1,4 +1,4 @@
-= Gauche Blusky API library
+= Gauche Bluesky API library
 
 A convenience library to access link:https://bsky.app/[Bluesky] API.
 
