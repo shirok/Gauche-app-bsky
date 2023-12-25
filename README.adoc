@@ -1,0 +1,46 @@
+= Gauche Blusky API library
+
+A convenience library to access link:https://bsky.app/[Bluesky] API.
+
+== Prerequisites
+
+link:https://practical-scheme.net/gauche[Gauche] 0.9.13 or later
+
+== App password
+
+You need to obtain an app password for the account you want to have access.
+Pass the handle and the app password to `make-bsky-session` to obtain
+`<bsky-session>` object, which is used for subsequent API access.
+
+For your convenience, you can keep the app password in a file.  It should
+be in JSON, as follows:
+
+----
+[
+  { "handle" : "your-handle-name", "appPassword" : "your-app-password" },
+  ...
+]
+----
+
+The procedure looks for `~/.gauche-bsky.json` as the default location of
+this settings.
+Keep the file securely; anybody with handle-appPassword pair can disguise
+as you on Bluesky.
+
+== API
+
+=== Creating a session
+
+`(make-bsky-session :optional handle app-password)` accesses `bsky.app`
+to get a session token.  Returns `<bsky-session>` on success.
+Throws `<bsky-error>` condition if something goes wrong.
+
+If _app-passowrd_ is omitted, _handle_ is searched from `~/.gauche-bsky.json`
+and its password is used if found.  If both _handle_ and _app-password_
+are omitted, the first entry of `~/.gauche-bsky.json` is used.
+
+=== Posting a text
+
+Currently, only a simple text posting is supported.
+
+`(bsky-post-text session text :key created-at)` posts _text_.
