@@ -7,7 +7,6 @@
 (define-module app.bsky
   (use file.util)
   (use srfi.19)
-  (use srfi.42)
   (use rfc.822)
   (use rfc.http)
   (use rfc.json)
@@ -41,37 +40,6 @@
   (status-code #f)
   (http-headers #f)
   (payload #f))
-
-;; For the convenience, handle and appPassword pairs can be saved
-;; in the settings file.  They are in JSON as follows:
-;;
-;;  [ {"handle" : "...", "appPassword" : "..."},
-;;    ... ]
-;;
-;; By default, "~/.gauche-bsky.json" is assumed.
-
-;; Internal.  Returns handle and app-password.
-(define (bsky-load-settings :optional (handle #f)
-                                      (settings-file
-                                       (expand-path "~/.gauche-bsky.json")))
-  (assume-type handle (<?> <string>))
-  (let1 json (with-input-from-file settings-file parse-json)
-    (unless (and (vector? json)
-                 (>= (vector-length json) 1))
-      (error "Invalid gauche-bsky settings in:" settings-file))
-    (if handle
-      (let/cc return
-        (do-ec [: v json]
-               (if (and (equal? (assoc-ref v "handle") handle)
-                        (string? (assoc-ref v "appPassword")))
-                 (return handle (assoc-ref v "appPassword"))))
-        (errorf "No entry for handle ~s is found in: ~a"
-                handle settings-file))
-      (let ([handle (assoc-ref (~ json 0) "handle")]
-            [pass   (assoc-ref (~ json 0) "appPassword")])
-        (if (and handle pass)
-          (values handle pass)
-          (errorf "Invalid entry in: ~a" settings-file))))))
 
 ;; API
 ;; Throws a <bsky-error> condition
@@ -122,10 +90,10 @@
 
 ;; API
 (define (make-bsky-session :optional (handle #f) (app-password #f))
-  (receive (handle app-password)
-      (if (and handle app-password)
-        (values handle app-password)
-        (bsky-load-settings handle))
+  (let* ([handle (or handle (sys-getenv "GAUCHE_BSKY_HANDLE"))]
+         [app-password (or app-password (sys-getenv "GAUCHE_BSKY_APP_PASSWORD"))])
+    (unless (and handle app-password)
+      (error "Both Bluesky handle and app-password need to be given."))
     (let1 session (bsky-post-json #f "/xrpc/com.atproto.server.createSession"
                                   `(("identifier" . ,handle)
                                     ("password" . ,app-password)))
