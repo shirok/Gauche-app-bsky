@@ -110,22 +110,35 @@
 ;; API
 ;; Simple text posting
 (define (bsky-post-text bsky text :key (created-at (current-time))
-                                       (langs '()))
-  (define facets (bsky-text-facets bsky text))
-  (define post
-    (cond-list
-     [#t @ `(("$type" . "app.bsky.feed.post")
-             ("text"  . ,text)
-             ("createdAt" . ,(fmt-time created-at)))]
-     [(pair? langs) `("langs" . ,(list->vector langs))]
-     [facets `("facets" . ,facets)]))
-
+                                       (langs '())
+                                       (quote-post #f)
+                                       (reply #f))
   (assume-type bsky <bsky-session>)
-  (json->record
-   (bsky-post-json bsky "/xrpc/com.atproto.repo.createRecord"
-                   `(("repo" . ,(~ bsky'did))
-                     ("collection" . "app.bsky.feed.post")
-                     ("record" . ,post)))))
+  (assume-type quote-post (<?> <bsky-record>))
+  (assume-type reply (<?> (<Tuple> <bsky-record> <bsky-record>)))
+
+  (let* ([facets (bsky-text-facets bsky text)]
+         [record->json (^r `(("uri" . ,(~ r'uri)) ("cid" . ,(~ r'cid))))]
+         [post
+          (cond-list
+           [#t @ `(("$type" . "app.bsky.feed.post")
+                   ("text"  . ,text)
+                   ("createdAt" . ,(fmt-time created-at)))]
+           [(pair? langs) `("langs" . ,(list->vector langs))]
+           [facets `("facets" . ,facets)]
+           [reply  `("reply" .
+                     (("root"   . ,(record->json (car reply)))
+                      ("parent" . ,(record->json (cadr reply)))))]
+           [quote-post `("embed" .
+                         (("$type" . "app.bsky-.embed.record")
+                          ("record" . ,(record->json quote-post))))]
+           )])
+
+    (json->record
+     (bsky-post-json bsky "/xrpc/com.atproto.repo.createRecord"
+                     `(("repo" . ,(~ bsky'did))
+                       ("collection" . "app.bsky.feed.post")
+                       ("record" . ,post))))))
 
 ;; Utility API
 (define (bsky-text-facets bsky text)
