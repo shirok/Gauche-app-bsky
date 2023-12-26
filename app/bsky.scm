@@ -17,6 +17,7 @@
   (export <bsky-session> <bsky-record> <bsky-error>
           bsky-error bsky-check-status!
           make-bsky-session
+          bsky-list-records bsky-get-record
           bsky-post-text bsky-text-facets
           ))
 (select-module app.bsky)
@@ -77,6 +78,16 @@
     (bsky-check-status! code hdrs body)
     (parse-json-string body)))
 
+(define (bsky-get-json bsky path params)
+  (assume-type bsky (<?> <bsky-session>)) ; #f for making session
+  (receive (code hdrs body)
+      (http-get *endpoint-host* `(,path ,@params)
+                :content-type "application/json"
+                :secure #t
+                :authorization (and bsky #"Bearer ~(~ bsky'access-jwt)"))
+    (bsky-check-status! code hdrs body)
+    (parse-json-string body)))
+
 ;; internal
 ;; convert the result json (as a record) to <bsky-record>
 (define (json->record json)
@@ -106,6 +117,23 @@
         :did (assoc-ref session "did")
         :access-jwt (assoc-ref session "accessJwt")
         :refresh-jwt (assoc-ref session "refreshJwt")))))
+
+;; API
+(define (bsky-list-records bsky)
+  (assume-type bsky <bsky-session>)
+  (bsky-get-json bsky "/xrpc/com.atproto.repo.listRecords"
+                 `(("repo" ,(~ bsky'did))
+                   ("collection" "app.bsky.feed.post"))))
+
+;; API
+(define (bsky-get-record bsky rkey)
+  (assume-type bsky <bsky-session>)
+  (assume-type rkey <string>)
+  (json->record
+   (bsky-get-json bsky "/xrpc/com.atproto.repo.getRecord"
+                  `(("repo" ,(~ bsky'did))
+                    ("collection" "app.bsky.feed.post")
+                    ("rkey" ,rkey)))))
 
 ;; API
 ;; Simple text posting

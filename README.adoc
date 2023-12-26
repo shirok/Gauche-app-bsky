@@ -22,9 +22,23 @@ If _handle_ and/or _app-password_ is omitted, values of the environment
 variable `GAUCHE_BSKY_HANDLE` and `GAUCHE_BSKY_APP_PASSWORD`
 are used, respectively.
 
+=== Retrieving a post
+
+You need to know the _rkey_ to retrieve a post.  _Rkey_ is
+shown in the last part of the post's URL.
+
+`(bsky-get-record session rkey)` returns `<bsky-record>` of the post.
 
 === Posting a text
 
 Currently, only a simple text posting is supported.
 
-`(bsky-post-text session text :key created-at)` posts _text_.
+`(bsky-post-text session text :key created-at langs quote-post reply)` posts _text_.
+
+- _Created-at_ is the post's timestamp, and the current time is used when
+omitted.
+- _Langs_ must be a list of language tags (e.g. `"en_US"` or `"ja"`).
+- _Quoted-post_ must be a `<bsky-record>` of the post to quote.
+- _Reply_ must be a two-element list of `<bsky-record>`, the first
+element is the root post of the thread, and the second element
+is the direct parent of the post.
