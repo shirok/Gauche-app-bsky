@@ -158,7 +158,7 @@
                      (("root"   . ,(record->json (car reply)))
                       ("parent" . ,(record->json (cadr reply)))))]
            [quote-post `("embed" .
-                         (("$type" . "app.bsky-.embed.record")
+                         (("$type" . "app.bsky.embed.record")
                           ("record" . ,(record->json quote-post))))]
            )])
 
