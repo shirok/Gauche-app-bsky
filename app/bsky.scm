@@ -67,9 +67,9 @@
 
 ;; internal
 
-;; Run thunk.  If access token is expred, refresh it and run it again.
-;; Since thunk can be retried, there shouldn't be a side effect before
-;; the web API call.
+;; Run body ....  If access token is expred, refresh it and run it again.
+;; Since body can be retried, there shouldn't be a non-idempotent
+;; side effect before the web API call.
 (define-syntax with-session
   (syntax-rules ()
     [(_ bsky body ...)
