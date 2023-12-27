@@ -66,27 +66,62 @@
     (bsky-error code hdrs body)))
 
 ;; internal
+
+;; Run thunk.  If access token is expred, refresh it and run it again.
+;; Since thunk can be retried, there shouldn't be a side effect before
+;; the web API call.
+(define-syntax with-session
+  (syntax-rules ()
+    [(_ bsky body ...)
+     (let retry ()
+       (guard (e [(and (bsky-error? e)
+                       (equal? (assoc-ref (~ e'payload) "error")
+                               "ExpiredToken"))
+                  (refresh-session! bsky)
+                  (retry)])
+         body ...))]))
+
+(define (refresh-session! bsky)
+  (receive (code hdrs body)
+      (http-post *endpoint-host* "/xrpc/com.atproto.server.refreshSession"
+                 ""
+                 :secure #t
+                 :authorization #"Bearer ~(~ bsky'refresh-jwt)")
+    (bsky-check-status! code hdrs body)
+    (let* ([json (parse-json-string body)]
+           [did (assoc-ref json "did")]
+           [access-jwt (assoc-ref json "accessJwt")]
+           [refresh-jwt (assoc-ref json "refreshJwt")])
+      (assume-type did <string>)
+      (assume-type access-jwt <string>)
+      (assume-type refresh-jwt <string>)
+      (set! (~ bsky'did) did)
+      (set! (~ bsky'access-jwt) access-jwt)
+      (set! (~ bsky'refresh-jwt) refresh-jwt)
+      bsky)))
+
 (define (bsky-post-json bsky path payload)
   (assume-type bsky (<?> <bsky-session>)) ; #f for making session
-  (receive (code hdrs body)
-      (http-post *endpoint-host* path
-                 (construct-json-string payload)
-                 :content-type "application/json"
-                 :secure #t
-                 :authorization (and bsky
-                                     #"Bearer ~(~ bsky'access-jwt)"))
-    (bsky-check-status! code hdrs body)
-    (parse-json-string body)))
+  ($ with-session bsky
+     (receive (code hdrs body)
+         (http-post *endpoint-host* path
+                    (construct-json-string payload)
+                    :content-type "application/json"
+                    :secure #t
+                    :authorization (and bsky
+                                        #"Bearer ~(~ bsky'access-jwt)"))
+       (bsky-check-status! code hdrs body)
+       (parse-json-string body))))
 
 (define (bsky-get-json bsky path params)
   (assume-type bsky (<?> <bsky-session>)) ; #f for making session
-  (receive (code hdrs body)
-      (http-get *endpoint-host* `(,path ,@params)
-                :content-type "application/json"
-                :secure #t
-                :authorization (and bsky #"Bearer ~(~ bsky'access-jwt)"))
-    (bsky-check-status! code hdrs body)
-    (parse-json-string body)))
+  ($ with-session bsky
+     (receive (code hdrs body)
+         (http-get *endpoint-host* `(,path ,@params)
+                   :secure #t
+                   :authorization (and bsky #"Bearer ~(~ bsky'access-jwt)"))
+       (bsky-check-status! code hdrs body)
+       (parse-json-string body))))
 
 ;; internal
 ;; convert the result json (as a record) to <bsky-record>
