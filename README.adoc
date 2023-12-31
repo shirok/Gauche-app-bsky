@@ -42,3 +42,17 @@ omitted.
 - _Reply_ must be a two-element list of `<bsky-record>`, the first
 element is the root post of the thread, and the second element
 is the direct parent of the post.
+
+
+=== Error handling
+
+If Bluesky API call fails, a condition of type `<bsky-error>` is thrown.
+Along with the error message in the API response, the condition
+has the following slots.
+
+- `status-code`: String HTTP status code.
+- `http-headers`: List of http response headers, in the form as
+`http-get` or `http-post` returned.
+- `payload`: If the response is in JSON, a parsed JSON structure.  Otherwise, a string of the response body.
+
+You can throw `<bsky-error>` with `(bsky-error status-code http-headers body)`.
