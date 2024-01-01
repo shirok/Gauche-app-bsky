@@ -52,5 +52,39 @@
          (%find-links "See http://www.example.com/foo/bar/baz?(something) ok?"))
   )
 
+(let ()
+  ;; test internal routine
+  (define %scan-segmented-text (with-module app.bsky scan-segmented-text))
+
+  (test* "segmented text -> facets"
+         '("abc" #())
+         ($ values->list $ %scan-segmented-text
+            '("abc")))
+  (test* "segmented text -> facets"
+         '("abcdef" #())
+         ($ values->list $ %scan-segmented-text
+            '("abc" "def")))
+  (test* "segmented text -> facets"
+         '("abcdefghi"
+           #((("index" ("byteStart" . 3) ("byteEnd" . 6))
+              ("features" . #((("$type" . "app.bsky.richtext.facet#link")
+                               ("uri" . "http://example.com")))))))
+
+         ($ values->list $ %scan-segmented-text
+            '("abc" ("def" :link "http://example.com") "ghi")))
+  (test* "segmented text -> facets"
+         '("abcdefとghi"
+           #((("index" ("byteStart" . 3) ("byteEnd" . 6))
+              ("features" . #((("$type" . "app.bsky.richtext.facet#link")
+                               ("uri" . "http://example.com")))))
+             (("index" ("byteStart" . 9) ("byteEnd" . 12))
+              ("features" . #((("$type" . "app.bsky.richtext.facet#link")
+                               ("uri" . "http://example.net/foo")))))))
+         ($ values->list $ %scan-segmented-text
+            '("abc"
+              ("def" :link "http://example.com")
+              "と"
+              ("ghi" :link "http://example.net/foo"))))
+  )
 
 (test-end :exit-on-failure #t)

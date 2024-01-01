@@ -18,7 +18,7 @@
           bsky-error bsky-check-status!
           make-bsky-session
           bsky-list-records bsky-get-record
-          bsky-post-text bsky-text-facets
+          bsky-post-text bsky-post-segmented-text bsky-text-facets
           ))
 (select-module app.bsky)
 
@@ -175,12 +175,13 @@
 (define (bsky-post-text bsky text :key (created-at (current-time))
                                        (langs '())
                                        (quote-post #f)
-                                       (reply #f))
+                                       (reply #f)
+                                       (facets #f))
   (assume-type bsky <bsky-session>)
   (assume-type quote-post (<?> <bsky-record>))
   (assume-type reply (<?> (<Tuple> <bsky-record> <bsky-record>)))
 
-  (let* ([facets (bsky-text-facets bsky text)]
+  (let* ([facets (or facets (bsky-text-facets bsky text))]
          [record->json (^r `(("uri" . ,(~ r'uri)) ("cid" . ,(~ r'cid))))]
          [post
           (cond-list
@@ -204,6 +205,7 @@
                        ("record" . ,post))))))
 
 ;; Utility API
+;; Detect link-like segemnt in TEXT and returns a vector of facet alists.
 (define (bsky-text-facets bsky text)
   (let1 links (find-links text)
     (if (pair? links)
@@ -219,6 +221,44 @@
 
 (define rx-link
   #/\b(https?:\/\/[^\/?#\s]+\.[[:alnum:]]{2,6}[^?#\s]*(?:\?[^#\s]*)?(?:#\S*)?)/)
+
+;; API
+;; Post a text with facets.
+;;
+;;  segmented-text : (segment ...)
+;;  segment : <string>
+;;          | (<string> :link url)
+(define (bsky-post-segmented-text bsky segments
+                                  :key (created-at (current-time))
+                                       (langs '())
+                                       (quote-post #f)
+                                       (reply #f))
+  (receive (text facets) (scan-segmented-text segments)
+    (bsky-post-text bsky text :created-at created-at :langs langs
+                    :quote-post quote-post :reply reply
+                    :facets facets)))
+
+;; Utility API
+;; Scan segments and returns a concatenate string and a vector of
+;; facet alists.
+(define (scan-segmented-text segments)
+  (let loop ((segs segments)
+             (ss '())                   ;reversed (string ...)
+             (bpos 0)                   ;byte position
+             (facets '()))              ;facet packet
+    (match segs
+      [() (values (string-concatenate-reverse ss)
+                  (list->vector (reverse facets)))]
+      [((? string? s) . rest)
+       (loop rest (cons s ss) (+ bpos (string-size s)) facets)]
+      [(((? string? s) ':link url) . rest)
+       (loop rest (cons s ss) (+ bpos (string-size s))
+             `((("index" . (("byteStart" . ,bpos)
+                            ("byteEnd" . ,(+ bpos (string-size s)))))
+                ("features" . #((("$type" . "app.bsky.richtext.facet#link")
+                                 ("uri" . ,url)))))
+               ,@facets))]
+      [(unknown . rest) (error "Invalid segment:" unknown)])))
 
 ;; Returns ((link-text start-pos end-pos) ...)
 (define (find-links text)
